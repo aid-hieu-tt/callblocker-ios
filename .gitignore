@@ -1,0 +1,10 @@
+.DS_Store
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+.build/
+.swiftpm/
+App/Info.plist
+App/CallBlocker.entitlements
+CallDirectoryExtension/Info.plist
+CallDirectoryExtension/CallDirectoryExtension.entitlements

@@ -1,0 +1,94 @@
+# XcodeGen spec — chạy `xcodegen generate` trên macOS để sinh CallBlocker.xcodeproj
+# Đổi `com.yourcompany` + DEVELOPMENT_TEAM cho đúng tài khoản Apple Developer
+# (nhớ đổi cả hằng số trong Shared/AppGroup.swift).
+name: CallBlocker
+options:
+  bundleIdPrefix: com.yourcompany
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: vi
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  CallBlockerCore:
+    path: Packages/CallBlockerCore
+
+targets:
+  CallBlocker:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared
+    dependencies:
+      - package: CallBlockerCore
+      - target: CallDirectoryExtension
+      - sdk: CallKit.framework
+      - sdk: Contacts.framework
+      - sdk: BackgroundTasks.framework
+      - sdk: libsqlite3.tbd
+    entitlements:
+      path: App/CallBlocker.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.yourcompany.callblocker
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Chặn Cuộc Gọi
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSContactsUsageDescription: "Danh bạ chỉ được dùng trên thiết bị để không chặn nhầm người quen. Dữ liệu không bao giờ rời khỏi máy."
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.yourcompany.callblocker.spam-refresh
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourcompany.callblocker
+        TARGETED_DEVICE_FAMILY: "1"
+
+  CallDirectoryExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - CallDirectoryExtension
+      - Shared
+    dependencies:
+      - package: CallBlockerCore
+      - sdk: CallKit.framework
+      - sdk: libsqlite3.tbd
+    entitlements:
+      path: CallDirectoryExtension/CallDirectoryExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.yourcompany.callblocker
+    info:
+      path: CallDirectoryExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Chặn Cuộc Gọi
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.callkit.call-directory
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).CallDirectoryHandler
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourcompany.callblocker.CallDirectoryExtension
+        TARGETED_DEVICE_FAMILY: "1"
+        # Extension nhỏ gọn: tối ưu kích thước ngay cả bản Debug để đo RAM sát thực tế hơn.
+        SWIFT_OPTIMIZATION_LEVEL: "-O"
+
+schemes:
+  CallBlocker:
+    build:
+      targets:
+        CallBlocker: all
+        CallDirectoryExtension: all
+    test:
+      targets:
+        - package: CallBlockerCore/CallBlockerCoreTests

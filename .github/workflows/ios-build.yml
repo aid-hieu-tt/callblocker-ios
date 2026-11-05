@@ -1,0 +1,68 @@
+name: iOS build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode
+        run: xcodebuild -version
+
+      - name: Core unit tests
+        run: swift test --package-path Packages/CallBlockerCore
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned, iphoneos)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project CallBlocker.xcodeproj \
+            -scheme CallBlocker \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log | grep -E "error:|warning: .*Swift|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" xcodebuild.log
+
+      - name: Ad-hoc sign with entitlements and package IPA
+        # Ký ad-hoc để entitlements (App Group) nằm sẵn trong binary — Sideloadly
+        # sẽ ký lại bằng Apple ID của bạn khi cài.
+        run: |
+          APP=build/Build/Products/Release-iphoneos/CallBlocker.app
+          codesign --force --sign - \
+            --entitlements CallDirectoryExtension/CallDirectoryExtension.entitlements \
+            "$APP/PlugIns/CallDirectoryExtension.appex"
+          codesign --force --sign - \
+            --entitlements App/CallBlocker.entitlements \
+            "$APP"
+          mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          (cd out && zip -qry CallBlocker-unsigned.ipa Payload)
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CallBlocker-unsigned-ipa
+          path: out/CallBlocker-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
