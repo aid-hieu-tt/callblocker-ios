@@ -8,3 +8,4 @@ App/Info.plist
 App/CallBlocker.entitlements
 CallDirectoryExtension/Info.plist
 CallDirectoryExtension/CallDirectoryExtension.entitlements
+dist/
