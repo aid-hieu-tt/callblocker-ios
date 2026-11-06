@@ -55,7 +55,7 @@ final class BlockDatabase {
         try db.execute("PRAGMA journal_mode=WAL;")
         if role == .callDirectoryExtension {
             // NFR-1: giới hạn page cache ~512 KB để Extension luôn < 12 MB.
-            try db.execute("PRAGMA cache_size=-512; PRAGMA temp_store=FILE;")
+            try db.execute("PRAGMA cache_size=-512;")
         }
         try migrate()
     }

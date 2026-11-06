@@ -3,10 +3,11 @@ import SQLite3
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-struct SQLiteError: Error, CustomStringConvertible {
+struct SQLiteError: LocalizedError, CustomStringConvertible {
     let code: Int32
     let message: String
     var description: String { "SQLite error \(code): \(message)" }
+    var errorDescription: String? { description }
 }
 
 enum SQLValue {
@@ -92,6 +93,9 @@ final class Statement {
     private let database: SQLiteDatabase // giữ connection sống lâu hơn statement
     private let handle: OpaquePointer
     private(set) var iterationError: Error?
+    /// `true` sau khi `sqlite3_step` trả `SQLITE_DONE`. Gọi step tiếp mà không reset sẽ khiến SQLite
+    /// báo lỗi hoặc tự chạy lại truy vấn từ đầu — iterator phải "đứng yên" khi đã hết dữ liệu.
+    private var exhausted = false
 
     fileprivate init(database: SQLiteDatabase, handle: OpaquePointer) {
         self.database = database
@@ -106,6 +110,7 @@ final class Statement {
         sqlite3_reset(handle)
         sqlite3_clear_bindings(handle)
         iterationError = nil
+        exhausted = false
         for (offset, value) in values.enumerated() {
             let index = Int32(offset + 1)
             let rc: Int32
@@ -121,17 +126,22 @@ final class Statement {
 
     /// `true` nếu có dòng dữ liệu, `false` khi hết.
     func step() throws -> Bool {
+        guard !exhausted else { return false }
         let rc = sqlite3_step(handle)
         switch rc {
         case SQLITE_ROW: return true
-        case SQLITE_DONE: return false
-        default: throw SQLiteError(code: rc, message: database.lastErrorMessage)
+        case SQLITE_DONE:
+            exhausted = true
+            return false
+        default:
+            exhausted = true
+            throw SQLiteError(code: rc, message: database.lastErrorMessage)
         }
     }
 
     /// Phiên bản không-throw dùng trong `IteratorProtocol`; lỗi được giữ lại để kiểm tra sau.
     func nextRow() -> Bool {
-        guard iterationError == nil else { return false }
+        guard iterationError == nil, !exhausted else { return false }
         do {
             return try step()
         } catch {
