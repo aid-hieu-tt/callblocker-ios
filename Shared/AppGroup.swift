@@ -17,19 +17,26 @@ enum AppGroup {
 
     static var extensionBundleIdentifier: String { appBundleIdentifier + extensionSuffix }
 
-    /// Quy ước `group.<bundle id của app>`; giữ ID gốc làm phương án dự phòng.
+    /// Thứ tự thử: App Group thực sự có trong provisioning profile (do công cụ ký tạo ra),
+    /// rồi tới quy ước `group.<bundle id>` và ID gốc.
     static var candidateIdentifiers: [String] {
-        var ids = ["group." + appBundleIdentifier]
-        let original = "group." + defaultAppBundleIdentifier
-        if !ids.contains(original) { ids.append(original) }
+        var ids = ProvisioningProfile.embedded?.applicationGroups ?? []
+        for id in ["group." + appBundleIdentifier, "group." + defaultAppBundleIdentifier] where !ids.contains(id) {
+            ids.append(id)
+        }
         return ids
     }
 
     enum ContainerError: LocalizedError {
         case unavailable
         var errorDescription: String? {
-            "Không truy cập được App Group (\(AppGroup.candidateIdentifiers.joined(separator: ", "))). "
-                + "Kiểm tra entitlement App Group của App và Extension."
+            let profile = ProvisioningProfile.embedded
+            let profileGroups = profile.map { $0.applicationGroups.isEmpty ? "không có" : $0.applicationGroups.joined(separator: ", ") }
+                ?? "không đọc được profile"
+            return "Không truy cập được App Group.\n"
+                + "Bundle: \(Bundle.main.bundleIdentifier ?? "?")\n"
+                + "App Group trong profile: \(profileGroups)\n"
+                + "Đã thử: \(AppGroup.candidateIdentifiers.joined(separator: ", "))"
         }
     }
 
@@ -41,6 +48,31 @@ enum AppGroup {
         }
         throw ContainerError.unavailable
     }
+}
+
+/// Đọc `embedded.mobileprovision` trong bundle (file CMS chứa plist dạng XML) để biết
+/// entitlement thực tế mà công cụ ký đã cấp.
+struct ProvisioningProfile {
+    let applicationGroups: [String]
+    let teamIdentifier: String?
+
+    static let embedded: ProvisioningProfile? = {
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+              let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .isoLatin1),
+              let start = text.range(of: "<?xml"),
+              let end = text.range(of: "</plist>"),
+              start.lowerBound < end.upperBound,
+              let xml = String(text[start.lowerBound..<end.upperBound]).data(using: .isoLatin1),
+              let plist = try? PropertyListSerialization.propertyList(from: xml, format: nil) as? [String: Any]
+        else { return nil }
+
+        let entitlements = plist["Entitlements"] as? [String: Any] ?? [:]
+        return ProvisioningProfile(
+            applicationGroups: entitlements["com.apple.security.application-groups"] as? [String] ?? [],
+            teamIdentifier: (plist["TeamIdentifier"] as? [String])?.first
+        )
+    }()
 }
 
 /// Kết quả lần nạp gần nhất do Extension ghi lại, App đọc để hiển thị.
